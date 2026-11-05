@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Candidaturas</title>
+<style>
+  :root{
+    --bg:#f6f5f2; --card:#fff; --ink:#1b1b1a; --muted:#6b6a66; --line:#e4e2dc;
+    --av:#1f7a4d; --av-bg:#e3f2ea; --ac:#9a5b00; --ac-bg:#fbefd9;
+    --sr:#4a5563; --sr-bg:#eceef1; --de:#a23a3a; --de-bg:#f7e4e4;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#141413; --card:#1e1e1c; --ink:#ecebe7; --muted:#9a9892; --line:#2e2d2a;
+      --av:#6fcf9b; --av-bg:#1d3328; --ac:#f0b25c; --ac-bg:#3a2c16;
+      --sr:#b4bcc7; --sr-bg:#2a2d32; --de:#ef8a8a; --de-bg:#3a2020;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.45 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  main{max-width:1080px;margin:0 auto;padding:32px 16px 64px}
+  h1{font-size:28px;margin:0 0 4px;letter-spacing:-.01em}
+  .sub{color:var(--muted);margin:0 0 24px}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:24px}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;
+    cursor:pointer;text-align:left;color:inherit;font:inherit}
+  .kpi[aria-pressed="true"]{outline:2px solid var(--ink)}
+  .kpi b{display:block;font-size:30px;line-height:1.1;font-variant-numeric:tabular-nums}
+  .kpi span{color:var(--muted);font-size:13px}
+  .bar{display:flex;height:10px;border-radius:6px;overflow:hidden;margin:0 0 24px;background:var(--line)}
+  .bar i{display:block;height:100%}
+  .tools{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+  input[type=search]{flex:1;min-width:200px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);
+    background:var(--card);color:var(--ink);font:inherit}
+  table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600;cursor:pointer;user-select:none;white-space:nowrap}
+  tr:last-child td{border-bottom:0}
+  td.num{font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--muted)}
+  .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+  .Avanzando{color:var(--av);background:var(--av-bg)}
+  .Acción{color:var(--ac);background:var(--ac-bg)}
+  .Sin{color:var(--sr);background:var(--sr-bg)}
+  .Descartada{color:var(--de);background:var(--de-bg)}
+  .silence{display:block;font-size:12px;color:var(--muted);margin-top:2px}
+  .empty,.err{padding:24px;text-align:center;color:var(--muted)}
+  @media (max-width:720px){
+    table,thead,tbody,tr,td{display:block}
+    thead{display:none}
+    table{border:0;background:none}
+    tr{background:var(--card);border:1px solid var(--line);border-radius:12px;margin-bottom:10px;padding:8px 4px}
+    td{border:0;padding:4px 12px}
+    td[data-k]::before{content:attr(data-k) ": ";color:var(--muted);font-size:12px}
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Candidaturas</h1>
+  <p class="sub" id="sub">Cargando…</p>
+  <div class="kpis" id="kpis"></div>
+  <div class="bar" id="bar"></div>
+  <div class="tools"><input type="search" id="q" placeholder="Buscar empresa, puesto o canal"></div>
+  <div id="out"></div>
+</main>
+<script>
+// Enlace CSV de la hoja publicada (Archivo → Compartir → Publicar en la Web → CSV)
+const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT4K2pu7wk0pi-PhX8VzEdpv8_v4M6e7v1yhMp6wv5k8M4heB7wDB7UE42pPSDtkEVuXnNK906lZg4d/pub?gid=0PEGAR_AQUI_EL_ENLACE_CSVsingle=truePEGAR_AQUI_EL_ENLACE_CSVoutput=csv";
+
+const ESTADOS = [
+  {k:"Avanzando", c:"var(--av)"},
+  {k:"Acción pendiente", c:"var(--ac)"},
+  {k:"Sin respuesta", c:"var(--sr)"},
+  {k:"Descartada", c:"var(--de)"}
+];
+let rows = [], filtro = null, orden = {col:"ultimo", dir:-1};
+
+function parseCSV(t){
+  const out=[]; let row=[], f="", q=false;
+  for(let i=0;i<t.length;i++){
+    const ch=t[i];
+    if(q){ if(ch=='"'){ if(t[i+1]=='"'){f+='"';i++;} else q=false; } else f+=ch; }
+    else if(ch=='"') q=true;
+    else if(ch==','){ row.push(f); f=""; }
+    else if(ch=='\n'){ row.push(f); out.push(row); row=[]; f=""; }
+    else if(ch!='\r') f+=ch;
+  }
+  if(f!==""||row.length){ row.push(f); out.push(row); }
+  return out;
+}
+const dias = d => Math.floor((Date.now() - new Date(d+"T00:00:00")) / 864e5);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+function render(){
+  const total = rows.length;
+  const cuenta = Object.fromEntries(ESTADOS.map(e => [e.k, rows.filter(r => r.estado===e.k).length]));
+  document.getElementById("kpis").innerHTML =
+    `<button class="kpi" aria-pressed="${filtro===null}" data-f=""><b>${total}</b><span>Total</span></button>` +
+    ESTADOS.map(e => `<button class="kpi" aria-pressed="${filtro===e.k}" data-f="${e.k}"><b style="color:${e.c}">${cuenta[e.k]}</b><span>${e.k}</span></button>`).join("");
+  document.getElementById("bar").innerHTML = ESTADOS.map(e => `<i title="${e.k}: ${cuenta[e.k]}" style="width:${total?cuenta[e.k]/total*100:0}%;background:${e.c}"></i>`).join("");
+  document.querySelectorAll(".kpi").forEach(b => b.onclick = () => { filtro = b.dataset.f || null; render(); });
+
+  const q = document.getElementById("q").value.trim().toLowerCase();
+  let vis = rows.filter(r => (!filtro || r.estado===filtro) &&
+    (!q || (r.empresa+" "+r.puesto+" "+r.canal).toLowerCase().includes(q)));
+  vis.sort((a,b) => (a[orden.col] > b[orden.col] ? 1 : a[orden.col] < b[orden.col] ? -1 : 0) * orden.dir);
+
+  const cols = [["empresa","Empresa"],["puesto","Puesto"],["canal","Canal"],["estado","Estado"],["fecha","Envío"],["ultimo","Último movimiento"]];
+  if(!vis.length){ document.getElementById("out").innerHTML = '<div class="empty">No hay candidaturas con este filtro.</div>'; return; }
+  document.getElementById("out").innerHTML =
+    `<table><thead><tr>${cols.map(([k,l]) => `<th data-c="${k}">${l}${orden.col===k?(orden.dir>0?" ↑":" ↓"):""}</th>`).join("")}</tr></thead><tbody>` +
+    vis.map(r => {
+      const sil = r.estado==="Sin respuesta" && dias(r.ultimo) > 42 ? '<span class="silence">Probable silencio</span>' : "";
+      return `<tr><td><b>${esc(r.empresa)}</b></td><td data-k="Puesto">${esc(r.puesto)}</td><td data-k="Canal">${esc(r.canal)}</td>` +
+        `<td><span class="pill ${esc(r.estado.split(" ")[0])}">${esc(r.estado)}</span>${sil}</td>` +
+        `<td class="num" data-k="Envío">${esc(r.fecha)}</td><td class="num" data-k="Último">${esc(r.ultimo)}</td></tr>`;
+    }).join("") + "</tbody></table>";
+  document.querySelectorAll("th").forEach(th => th.onclick = () => {
+    const c = th.dataset.c; orden = {col:c, dir: orden.col===c ? -orden.dir : (c==="fecha"||c==="ultimo" ? -1 : 1)}; render();
+  });
+}
+
+fetch(CSV_URL + (CSV_URL.includes("?") ? "&" : "?") + "t=" + Date.now())
+  .then(r => { if(!r.ok) throw new Error(r.status); return r.text(); })
+  .then(t => {
+    const [h, ...data] = parseCSV(t);
+    rows = data.filter(r => r[1]).map(r => ({id:r[0], empresa:r[1], puesto:r[2], canal:r[3], estado:r[4], fecha:r[5], ultimo:r[6]}));
+    const ult = rows.reduce((m,r) => r.ultimo > m ? r.ultimo : m, "");
+    document.getElementById("sub").textContent = `${rows.length} candidaturas · último movimiento ${ult} · se actualiza cada mañana`;
+    document.getElementById("q").oninput = render;
+    render();
+  })
+  .catch(() => {
+    document.getElementById("sub").textContent = "";
+    document.getElementById("out").innerHTML = '<div class="err">No se pudieron cargar los datos. Prueba a recargar en unos minutos.</div>';
+  });
+</script>
+</body>
+</html>
