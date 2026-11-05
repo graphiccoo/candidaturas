@@ -115,7 +115,7 @@ function render(){
     vis.map(r => {
       const sil = r.estado==="Sin respuesta" && dias(r.ultimo) > 42 ? '<span class="silence">Probable silencio</span>' : "";
       return `<tr><td><b>${esc(r.empresa)}</b></td><td data-k="Puesto">${esc(r.puesto)}</td><td data-k="Canal">${esc(r.canal)}</td>` +
-        `<td><span class="pill ${esc(r.estado.split(" ")[0])}">${esc(r.estado)}</span>${sil}</td>` +
+        `<td><span class="pill ${esc((r.estado||"").split(" ")[0])}">${esc(r.estado)}</span>${sil}</td>` +
         `<td class="num" data-k="Envío">${esc(r.fecha)}</td><td class="num" data-k="Último">${esc(r.ultimo)}</td></tr>`;
     }).join("") + "</tbody></table>";
   document.querySelectorAll("th").forEach(th => th.onclick = () => {
@@ -123,19 +123,21 @@ function render(){
   });
 }
 
-fetch(CSV_URL + (CSV_URL.includes("?") ? "&" : "?") + "t=" + Date.now())
-  .then(r => { if(!r.ok) throw new Error(r.status); return r.text(); })
+fetch(CSV_URL, {cache: "no-store"})
+  .then(r => { if(!r.ok) throw new Error("HTTP " + r.status); return r.text(); })
   .then(t => {
-    const [h, ...data] = parseCSV(t);
-    rows = data.filter(r => r[1]).map(r => ({id:r[0], empresa:r[1], puesto:r[2], canal:r[3], estado:r[4], fecha:r[5], ultimo:r[6]}));
+    const [h, ...data] = parseCSV(t.replace(/^\uFEFF/, ""));
+    if(!h || h[0].trim() !== "ID" || h.length < 7) throw new Error("La hoja no devolvió el CSV esperado");
+    rows = data.filter(r => r[1]).map(r => ({id:r[0], empresa:r[1]||"", puesto:r[2]||"", canal:r[3]||"", estado:(r[4]||"").trim(), fecha:r[5]||"", ultimo:r[6]||""}));
     const ult = rows.reduce((m,r) => r.ultimo > m ? r.ultimo : m, "");
     document.getElementById("sub").textContent = `${rows.length} candidaturas · último movimiento ${ult} · se actualiza cada mañana`;
     document.getElementById("q").oninput = render;
     render();
   })
-  .catch(() => {
+  .catch(e => {
     document.getElementById("sub").textContent = "";
-    document.getElementById("out").innerHTML = '<div class="err">No se pudieron cargar los datos. Prueba a recargar en unos minutos.</div>';
+    document.getElementById("kpis").innerHTML = "";
+    document.getElementById("out").innerHTML = '<div class="err">No se pudieron cargar los datos (' + esc(e.message) + ').</div>';
   });
 </script>
 </body>
